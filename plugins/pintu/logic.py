@@ -165,10 +165,6 @@ class GameService:
         return int(match.group(1)), int(match.group(2))
 
     @staticmethod
-    def mention(user_id: int) -> str:
-        return f"[CQ:at,qq={user_id}]"
-
-    @staticmethod
     def extract_target_user_id(text: str, prefix: str, event_segments: list) -> Optional[str]:
         """从 @ 消息段或前缀后文本中提取目标用户 ID"""
         for seg in event_segments:

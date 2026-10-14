@@ -1,16 +1,25 @@
 # RqhBot 配置文件
 # 复制此文件为 config.yaml 并填入实际配置
 
-# NapCat 连接配置
+# 适配器后端：napcat 或 snowluma
+# 决定读取下面哪一段连接配置（napcat / snowluma）
+adapter: "napcat"
+
+# NapCat 连接配置（adapter: napcat 时生效）
 # ⚠️ Windows 注意：localhost 可能优先解析为 IPv6 (::1)，导致 NapCat 连接失败。
 #    建议直接在下面写 127.0.0.1。
 napcat:
-  ws_url: "ws://localhost:3001"          # NapCat WebSocket 地址（建议 Win 上直接用 127.0.0.1）
+  ws_url: "ws://localhost:3002"          # NapCat WebSocket 地址（建议 Win 上直接用 127.0.0.1）
   access_token: ""                        # 访问令牌（从 NapCat 获取）
   bot_uin: ""                             # 机器人 QQ 号
   root: ""                                # 管理员 QQ 号
   webui_uri: "http://localhost:6098"      # WebUI 地址
   webui_token: ""                         # WebUI 令牌
+
+# SnowLuma 连接配置（adapter: snowluma 时生效）
+snowluma:
+  ws_url: "ws://localhost:3001"          # SnowLuma WebSocket 地址（建议 Win 上直接用 127.0.0.1）
+  access_token: ""                        # 访问令牌（从 SnowLuma 获取）
 
 # 机器人配置
 bot:

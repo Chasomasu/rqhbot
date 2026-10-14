@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, TypeAlias
 
 from sdk.config import setup_logging
-from sdk.core import NapCatClient
+from sdk.core import OneBotClient
 from sdk.core.event_bus import EventBus
 from sdk.core.events import (
     BaseEvent,
@@ -47,8 +47,11 @@ class BotClient:
         ws_url: Optional[str] = None,
         access_token: Optional[str] = None,
         plugins_dir: str = "plugins",
+        backend: Optional[str] = None,
     ) -> None:
-        self.client: NapCatClient = NapCatClient(ws_url=ws_url, access_token=access_token)
+        self.client: OneBotClient = OneBotClient(
+            ws_url=ws_url, access_token=access_token, backend=backend
+        )
         self.api = self.client
         self.event_bus: EventBus = EventBus()
         self._plugins_dir: str = plugins_dir
@@ -309,7 +312,8 @@ class BotClient:
             logger.info("等待消息中...")
             logger.info("=" * 50)
 
-            while self.client.connected:
+            # 断线后若仍在自动重连，保持进程存活等待重连结果
+            while self.client.connected or self.client.reconnecting:
                 await asyncio.sleep(1)
 
         except KeyboardInterrupt:
@@ -337,9 +341,10 @@ class BotClient:
         from sdk.config import config_manager
 
         bot = cls(
-            ws_url=config_manager.get("napcat.ws_url", "ws://localhost:3001"),
-            access_token=config_manager.get("napcat.access_token", ""),
+            ws_url=config_manager.get_ws_uri(),
+            access_token=config_manager.get_ws_token(),
             plugins_dir=config_manager.get("bot.plugin_dir", "plugins"),
+            backend=config_manager.get_backend_name(),
         )
         bot.start(
             debug=config_manager.get("settings.debug", False),

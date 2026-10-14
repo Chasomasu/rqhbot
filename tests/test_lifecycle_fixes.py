@@ -1,8 +1,9 @@
-"""回归测试：连接关闭状态、断开清理、插件卸载与消息段修正"""
+"""回归测试：连接关闭状态、自动重连、断开清理、插件卸载与消息段修正"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 import types
@@ -30,6 +31,16 @@ class _NormallyClosedSocket:
         raise StopAsyncIteration
 
 
+async def _drop_reconnect_task(client: NapCatClient) -> None:
+    """取消测试中产生的重连任务，避免真实网络连接"""
+    client._closing = True
+    task = client._reconnect_task
+    if task is not None and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 async def test_normal_close_marks_client_disconnected() -> None:
     """正常关闭（1000/1001）后必须更新连接状态，否则 run_frontend 永远等待"""
     client = NapCatClient()
@@ -40,6 +51,54 @@ async def test_normal_close_marks_client_disconnected() -> None:
     await client._listen_messages()
 
     assert client.connected is False
+    await _drop_reconnect_task(client)
+
+
+async def test_unexpected_close_schedules_reconnect() -> None:
+    """意外断线应自动安排重连"""
+    client = NapCatClient()
+    client.RECONNECT_DELAY = 0.01
+    client.ws = _NormallyClosedSocket()
+    client.msg_queue = asyncio.Queue()
+    client._connected = True
+    client.connect = AsyncMock(return_value=True)
+
+    await client._listen_messages()
+
+    assert client.reconnecting is True
+    task = client._reconnect_task
+    assert task is not None
+    await asyncio.wait_for(task, 2)
+    client.connect.assert_awaited()
+
+
+async def test_explicit_disconnect_does_not_reconnect() -> None:
+    """主动 disconnect 后不得再自动重连"""
+    client = NapCatClient()
+    client._connected = True
+    client.ws = AsyncMock()
+
+    await client.disconnect()
+
+    assert client._reconnect_task is None
+    assert client.reconnecting is False
+
+
+async def test_disconnect_cancels_inflight_reconnect() -> None:
+    """主动关闭时要能取消进行中的重连任务"""
+    client = NapCatClient()
+    client.RECONNECT_DELAY = 30.0  # 让重连任务停在退避等待中
+    client._connected = True
+    client.ws = AsyncMock()
+
+    client._schedule_reconnect()
+    task = client._reconnect_task
+    assert task is not None and not task.done()
+
+    await client.disconnect()
+
+    assert client._reconnect_task is None
+    assert task.done()
 
 
 async def test_disconnect_cleans_up_after_connection_lost() -> None:
@@ -118,10 +177,11 @@ async def test_rqhshen_unload_releases_event_subscriptions() -> None:
 
 
 async def test_wenda_unload_persists_dirty_answers(tmp_path, monkeypatch) -> None:
-    """卸载时必须把脏数据落盘，否则刚提示成功的修改会丢失"""
+    """卸载时必须把残留的脏数据落盘"""
     manager = AnswerManager(str(tmp_path / "precise.json"), str(tmp_path / "fuzzy.json"))
     assert manager.add_precise_answer("问题", "答案")
-    assert manager.dirty
+    # 模拟仍有未落盘的修改（例如外部直接改动内存数据）
+    manager.dirty = True
     monkeypatch.setattr(wenda, "answer_manager", manager)
 
     plugin = wenda.RqhWendaPlugin()
@@ -130,6 +190,50 @@ async def test_wenda_unload_persists_dirty_answers(tmp_path, monkeypatch) -> Non
     assert not manager.dirty
     saved = json.loads((tmp_path / "precise.json").read_text(encoding="utf-8"))
     assert saved == {"问题": "答案"}
+
+
+def test_answer_mutations_persist_immediately(tmp_path) -> None:
+    """增删改必须立即落盘，而不是等 30 秒定时保存"""
+    manager = AnswerManager(str(tmp_path / "precise.json"), str(tmp_path / "fuzzy.json"))
+    precise = tmp_path / "precise.json"
+
+    assert manager.add_precise_answer("问", "答")
+    assert not manager.dirty
+    assert json.loads(precise.read_text(encoding="utf-8")) == {"问": "答"}
+
+    assert manager.update_answer("问", "新答")
+    assert json.loads(precise.read_text(encoding="utf-8")) == {"问": "新答"}
+
+    assert manager.delete_answer("问")
+    assert json.loads(precise.read_text(encoding="utf-8")) == {}
+    assert manager.delete_answer("问") is False
+
+
+def test_answer_mutation_reports_save_failure(tmp_path, monkeypatch) -> None:
+    """落盘失败时必须返回 False，并保留脏标记"""
+    manager = AnswerManager(str(tmp_path / "precise.json"), str(tmp_path / "fuzzy.json"))
+    monkeypatch.setattr(manager, "_save_file", lambda path, data: False)
+
+    assert manager.add_precise_answer("问", "答") is False
+    assert manager.dirty is True
+
+
+async def test_wenda_reports_save_failure_to_group(tmp_path, monkeypatch) -> None:
+    """保存失败时不能回复添加成功"""
+    manager = AnswerManager(str(tmp_path / "precise.json"), str(tmp_path / "fuzzy.json"))
+    monkeypatch.setattr(manager, "_save_file", lambda path, data: False)
+    monkeypatch.setattr(wenda, "answer_manager", manager)
+
+    plugin = wenda.RqhWendaPlugin()
+    plugin.api = MagicMock()
+    plugin.api.send_group_message = AsyncMock()
+
+    await plugin._add_precise_answer("精确问 问题 答 答案", 1, "2654278608")
+
+    text = plugin.api.send_group_message.await_args.args[1]
+    assert "失败" in text
+    assert "成功" not in text
+    await plugin.on_unload()
 
 
 async def test_pintu_score_uses_real_at_segments() -> None:

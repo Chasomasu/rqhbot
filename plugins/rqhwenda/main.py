@@ -160,10 +160,14 @@ class RqhWendaPlugin(PluginBase):
         m = re.match(r"^模糊问 (.+?) 答 (.+)$", text, re.DOTALL)
         if m:
             q, a = m.groups()
-            answer_manager.add_normal_answer(q, a)
-            await self.api.send_group_message(
-                group_id, f"ฅ^•ω•^ฅ 问答对添加成功喵～\n问：{q.strip()}\n答：{a.strip()}"
-            )
+            if answer_manager.add_normal_answer(q, a):
+                await self.api.send_group_message(
+                    group_id, f"ฅ^•ω•^ฅ 问答对添加成功喵～\n问：{q.strip()}\n答：{a.strip()}"
+                )
+            else:
+                await self.api.send_group_message(
+                    group_id, "问答保存失败，请稍后重试喵～"
+                )
         else:
             await self.api.send_group_message(
                 group_id, "格式错误，正确格式：模糊问 问题内容 答 答案内容"
@@ -179,10 +183,14 @@ class RqhWendaPlugin(PluginBase):
         m = re.match(r"^精确问 (.+?) 答 (.+)$", text, re.DOTALL)
         if m:
             q, a = m.groups()
-            answer_manager.add_precise_answer(q, a)
-            await self.api.send_group_message(
-                group_id, f"ฅ^•ω•^ฅ 精确问答对添加成功喵～\n精确问：{q.strip()}\n答：{a.strip()}"
-            )
+            if answer_manager.add_precise_answer(q, a):
+                await self.api.send_group_message(
+                    group_id, f"ฅ^•ω•^ฅ 精确问答对添加成功喵～\n精确问：{q.strip()}\n答：{a.strip()}"
+                )
+            else:
+                await self.api.send_group_message(
+                    group_id, "问答保存失败，请稍后重试喵～"
+                )
         else:
             await self.api.send_group_message(
                 group_id, "格式错误，正确格式：精确问 问题内容 答 答案内容"
@@ -195,13 +203,17 @@ class RqhWendaPlugin(PluginBase):
         parts = text[2:].split("答", 1)
         if len(parts) == 2:
             old_q, new_a = parts[0].strip(), parts[1].strip()
-            if answer_manager.update_answer(old_q, new_a):
+            if not answer_manager.has_answer(old_q):
                 await self.api.send_group_message(
-                    group_id, f"ฅ^•ω•^ฅ 问答修改成功喵～\n问：{old_q}\n新回答：{new_a}"
+                    group_id, f"没有找到问题『{old_q}』喵～"
+                )
+            elif not answer_manager.update_answer(old_q, new_a):
+                await self.api.send_group_message(
+                    group_id, "问答修改保存失败，请稍后重试喵～"
                 )
             else:
                 await self.api.send_group_message(
-                    group_id, f"没有找到问题『{old_q}』喵～"
+                    group_id, f"ฅ^•ω•^ฅ 问答修改成功喵～\n问：{old_q}\n新回答：{new_a}"
                 )
 
     async def _delete_answer(self, text: str, group_id: int, uid: str) -> None:
@@ -215,12 +227,15 @@ class RqhWendaPlugin(PluginBase):
                 group_id, "请指定要删除的问题，格式：删问答+问题内容"
             )
             return
+        if not answer_manager.has_answer(question):
+            await self.api.send_group_message(group_id, "未找到该问题")
+            return
         if answer_manager.delete_answer(question):
             await self.api.send_group_message(
                 group_id, f"问答已删除喵～\n问：{question}"
             )
         else:
-            await self.api.send_group_message(group_id, "未找到该问题")
+            await self.api.send_group_message(group_id, "问答删除保存失败，请稍后重试喵～")
 
     async def _list_all_answers(self, group_id: int, uid: str) -> None:
         """列出所有问答"""

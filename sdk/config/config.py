@@ -15,6 +15,8 @@ from typing import Any, Dict, Final, Optional, TypeAlias
 import yaml
 from dotenv import load_dotenv
 
+from .backends import DEFAULT_BACKEND, get_backend
+
 # 日志器
 logger = logging.getLogger(__name__)
 
@@ -208,6 +210,34 @@ class ConfigManager:
         )
         logger.info("当前配置:\n%s", config_str)
 
+    # ==================== 适配器后端配置 ====================
+
+    def get_backend_name(self) -> str:
+        """获取当前适配器后端名称（顶层 ``adapter`` 字段，缺省为默认后端）"""
+        return get_backend(self.get("adapter") or DEFAULT_BACKEND).name
+
+    def set_backend(self, name: str) -> None:
+        """设置适配器后端（写入顶层 ``adapter`` 字段并保存）
+
+        Args:
+            name: 后端名称，如 "napcat" / "snowluma"
+
+        Raises:
+            ValueError: 名称不在已注册后端中。
+        """
+        self.set("adapter", get_backend(name).name)
+        self._save_config()
+
+    def get_ws_uri(self) -> str:
+        """按当前后端读取 WebSocket 地址，缺省回落到该后端默认值"""
+        backend = get_backend(self.get_backend_name())
+        return self.get(f"{backend.config_section}.ws_url") or backend.default_ws_uri
+
+    def get_ws_token(self) -> str:
+        """按当前后端读取访问令牌，缺省为空串"""
+        backend = get_backend(self.get_backend_name())
+        return self.get(f"{backend.config_section}.access_token", "") or ""
+
     # ==================== NapCat 配置 ====================
 
     def set_bot_uin(self, bot_uin: str) -> None:
@@ -285,8 +315,8 @@ class Config:
     支持通过 reload_env() 热更新配置。
     """
 
-    # NapCat 连接配置
-    NAPCAT_WS_URL: str = os.getenv("NAPCAT_WS_URL", "ws://localhost:3001")
+    # 适配器连接配置（未设置时回落到所选后端的默认地址）
+    NAPCAT_WS_URL: str = os.getenv("NAPCAT_WS_URL", "")
     NAPCAT_ACCESS_TOKEN: str = os.getenv("NAPCAT_ACCESS_TOKEN", "")
 
     # 日志配置

@@ -82,51 +82,60 @@ class AnswerManager:
         return self.save_if_dirty()
 
     def add_precise_answer(self, question: str, answer: str) -> bool:
+        """添加精确问答；返回 True 表示已写入且成功落盘"""
         with self.lock:
             self.precise_data[question.strip()] = answer.strip()
             self.dirty = True
-        return True
+        return self.save_if_dirty()
 
     def add_fuzzy_answer(self, question: str, answer: str) -> bool:
+        """添加模糊问答；返回 True 表示已写入且成功落盘"""
         with self.lock:
             self.fuzzy_data[question.strip()] = answer.strip()
             self.dirty = True
-        return True
+        return self.save_if_dirty()
 
     def add_normal_answer(self, question: str, answer: str) -> bool:
         return self.add_fuzzy_answer(question, answer)
 
+    def has_answer(self, question: str) -> bool:
+        with self.lock:
+            return question in self.precise_data or question in self.fuzzy_data
+
     def update_answer(self, question: str, new_answer: str) -> bool:
+        """修改问答；返回 True 表示已修改且成功落盘"""
         with self.lock:
             if question in self.precise_data:
                 self.precise_data[question] = new_answer.strip()
-                self.dirty = True
-                return True
-            if question in self.fuzzy_data:
+            elif question in self.fuzzy_data:
                 self.fuzzy_data[question] = new_answer.strip()
-                self.dirty = True
-                return True
-            return False
+            else:
+                return False
+            self.dirty = True
+        return self.save_if_dirty()
 
     def delete_answer(self, question: str) -> bool:
-        deleted = False
+        """删除问答；返回 True 表示已删除且成功落盘"""
         with self.lock:
+            deleted = False
             if question in self.precise_data:
                 del self.precise_data[question]
                 deleted = True
             if question in self.fuzzy_data:
                 del self.fuzzy_data[question]
                 deleted = True
-            if deleted:
-                self.dirty = True
-        return deleted
+            if not deleted:
+                return False
+            self.dirty = True
+        return self.save_if_dirty()
 
     def clear_all_answers(self) -> bool:
+        """清空问答；返回 True 表示已清空且成功落盘"""
         with self.lock:
             self.precise_data.clear()
             self.fuzzy_data.clear()
             self.dirty = True
-        return True
+        return self.save_if_dirty()
 
     def search_precise(self, question: str) -> Optional[str]:
         if not question:

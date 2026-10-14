@@ -5,7 +5,7 @@ RqhBot SDK —— 核心模块
 
 from __future__ import annotations
 
-from .client import MessageSegment, NapCatClient
+from .client import MessageSegment, NapCatClient, OneBotClient
 from .event_bus import EventBus
 from .events import (
     BaseEvent,
@@ -31,6 +31,7 @@ from .events import (
 
 __all__: list[str] = [
     "MessageSegment",
+    "OneBotClient",
     "NapCatClient",
     "EventBus",
     "BaseEvent",

@@ -12,7 +12,7 @@ from typing import (
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from sdk.config import Config, setup_logging
+from sdk.config import BackendSpec, Config, get_backend, setup_logging
 from sdk.core.interfaces import IClient, IConnectionEventListener, MessageSegmentType
 
 # 设置日志系统
@@ -29,9 +29,9 @@ Decorator = Callable[[EventHandler], EventHandler]
 
 
 class MessageSegment:
-    """消息段构建器 —— 用于构建 NapCat 数组格式的消息
+    """消息段构建器 —— 用于构建 OneBot 11 数组格式的消息
 
-    NapCat 的 message 支持数组格式：
+    OneBot 11（NapCat / SnowLuma 等）的 message 支持数组格式：
     ```python
     [
         {"type": "text", "data": {"text": "你好，"}},
@@ -184,12 +184,13 @@ class MessageSegment:
         return {"type": "xml", "data": {"data": data}}
 
 
-class NapCatClient(IClient):
-    """NapCat 客户端 —— 实现 IClient Protocol"""
+class OneBotClient(IClient):
+    """OneBot 11 客户端 —— 支持 NapCat / SnowLuma 后端，实现 IClient Protocol"""
 
     # ---- 重连配置 ----
     MAX_RECONNECT_ATTEMPTS: Final[int] = 5
     RECONNECT_DELAY: Final[float] = 3.0       # 秒
+    RECONNECT_MAX_ROUNDS: Final[int] = 3      # 断线后自动重连的最大轮数
     PING_INTERVAL: Final[float] = 25.0
     PING_TIMEOUT: Final[float] = 10.0
     CLOSE_TIMEOUT: Final[float] = 5.0
@@ -198,8 +199,10 @@ class NapCatClient(IClient):
         self,
         ws_url: Optional[str] = None,
         access_token: Optional[str] = None,
+        backend: Optional[str] = None,
     ) -> None:
-        raw_url: str = ws_url or Config.NAPCAT_WS_URL
+        self.backend: BackendSpec = get_backend(backend)
+        raw_url: str = ws_url or Config.NAPCAT_WS_URL or self.backend.default_ws_uri
         self.ws_url: str = raw_url
         self.access_token: str = access_token or Config.NAPCAT_ACCESS_TOKEN
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
@@ -221,8 +224,8 @@ class NapCatClient(IClient):
 
         # ---- 重连控制 ----
         self._reconnect_attempts: int = 0
-        self._reconnect_event: asyncio.Event = asyncio.Event()
-        self._reconnect_event.set()  # 初始为可连接状态
+        self._reconnect_task: Optional[asyncio.Task[None]] = None
+        self._closing: bool = False  # 主动关闭后不再自动重连
 
         # ---- 连接事件监听器 ----
         self._connection_listeners: List[IConnectionEventListener] = []
@@ -234,7 +237,90 @@ class NapCatClient(IClient):
     def connected(self) -> bool:
         """是否已连接"""
         return self._connected
-    
+
+    @property
+    def reconnecting(self) -> bool:
+        """是否正在进行自动重连"""
+        return self._reconnect_task is not None and not self._reconnect_task.done()
+
+    async def _cancel_connection_tasks(self) -> None:
+        """回收上一轮遗留的监听/处理任务
+
+        重连时必须先取消旧任务，否则旧的监听/处理协程可能与新任务并存，
+        造成同一条消息被重复处理。
+        """
+        for attr in ("_processing_task", "_listen_task"):
+            task: Optional[asyncio.Task[None]] = getattr(self, attr)
+            if task is None or task is asyncio.current_task():
+                continue
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"回收旧连接任务时出错: {e}")
+            finally:
+                setattr(self, attr, None)
+
+    async def _cancel_reconnect_task(self) -> None:
+        """取消进行中的自动重连任务"""
+        task = self._reconnect_task
+        self._reconnect_task = None
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"取消重连任务时出错: {e}")
+
+    def _schedule_reconnect(self) -> None:
+        """监听循环结束后安排自动重连（保证同一时间只有一个重连任务）"""
+        if self._closing:
+            return
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("事件循环已关闭，跳过自动重连")
+            return
+        self._reconnect_task = loop.create_task(self._reconnect_loop())
+        self._reconnect_task.add_done_callback(self._on_reconnect_task_done)
+
+    @staticmethod
+    def _on_reconnect_task_done(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"自动重连任务异常: {exc}", exc_info=exc)
+
+    async def _reconnect_loop(self) -> None:
+        """断线后的自动重连：带退避地重试，直到成功或放弃
+
+        每一轮调用 connect()，由 connect() 负责通知连接监听器；
+        达到最大轮数仍失败则结束，使 run_frontend 得以正常退出。
+        """
+        for round_index in range(1, self.RECONNECT_MAX_ROUNDS + 1):
+            delay = min(self.RECONNECT_DELAY * round_index, 30.0)
+            logger.info(
+                f"连接已断开，{delay:.0f} 秒后进行第 {round_index}/{self.RECONNECT_MAX_ROUNDS} 轮重连..."
+            )
+            await asyncio.sleep(delay)
+            if self._closing:
+                return
+            # 标记为重连，connect() 会走 on_reconnect_success 通知分支
+            self._reconnect_attempts = round_index
+            if await self.connect():
+                logger.info(f"第 {round_index} 轮重连成功")
+                return
+        self._reconnect_attempts = 0
+        logger.error(f"自动重连失败，已尝试 {self.RECONNECT_MAX_ROUNDS} 轮")
+
     async def connect(self, max_retries: Optional[int] = None) -> bool:
         """
         建立连接（支持重连）
@@ -245,6 +331,10 @@ class NapCatClient(IClient):
         Returns:
             是否连接成功
         """
+        self._closing = False
+        # 重连前先回收上一轮的监听/处理任务，避免新旧任务同时消费消息
+        await self._cancel_connection_tasks()
+
         retries = 0
         max_retries = max_retries or self.MAX_RECONNECT_ATTEMPTS
         
@@ -290,7 +380,7 @@ class NapCatClient(IClient):
                 was_reconnect = self._reconnect_attempts > 0
                 self._reconnect_attempts = 0
 
-                logger.info(f"成功连接到NapCat服务器: {self.ws_url}")
+                logger.info(f"成功连接到{self.backend.display_name}服务器: {self.ws_url}")
 
                 # 通知连接成功
                 for listener in self._connection_listeners:
@@ -336,6 +426,9 @@ class NapCatClient(IClient):
         Args:
             force: 是否强制断开
         """
+        self._closing = True
+        await self._cancel_reconnect_task()
+
         has_resources = (
             self._processing_task is not None
             or self._listen_task is not None
@@ -457,6 +550,9 @@ class NapCatClient(IClient):
             # 无论正常关闭、异常还是被取消，都要标记断开，
             # 否则 run_frontend 会一直等待一个已经死掉的连接
             self._connected = False
+            # 非主动关闭时安排自动重连
+            if not self._closing:
+                self._schedule_reconnect()
 
     async def _process_messages(self) -> None:
         """消息处理循环 —— 与接收分离"""
@@ -466,7 +562,11 @@ class NapCatClient(IClient):
                     await asyncio.sleep(0.1)
                     continue
 
-                message = await self.msg_queue.get()
+                # 带超时获取，保证断开后处理循环能在一个周期内自行退出
+                try:
+                    message = await asyncio.wait_for(self.msg_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
                 
                 # 性能监控 - 开始
                 start_time = time.perf_counter()
@@ -584,7 +684,7 @@ class NapCatClient(IClient):
             Exception: 其他错误
         """
         if not self.connected or not self.ws:
-            raise ConnectionError("未连接到NapCat服务器")
+            raise ConnectionError(f"未连接到{self.backend.display_name}服务器")
 
         last_error = None
         pending_futures: List[asyncio.Future[Any]] = []
@@ -1179,3 +1279,7 @@ class NapCatClient(IClient):
         stats["reconnect_attempts"] = self._reconnect_attempts
         stats["is_connected"] = self._connected
         return stats
+
+
+# 向后兼容别名：早期版本仅支持 NapCat，客户端名为 NapCatClient
+NapCatClient = OneBotClient

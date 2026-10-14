@@ -21,6 +21,7 @@ from .core import (
     Message,
     NapCatClient,
     NoticeEvent,
+    OneBotClient,
     PokeNotice,
     PrivateMessageEvent,
     RequestEvent,
@@ -38,6 +39,7 @@ from .pluginsystem import (
 __version__: str = "3.7.0"
 
 __all__: list[str] = [
+    "OneBotClient",
     "NapCatClient",
     "EventBus",
     "BaseEvent",

@@ -1,10 +1,11 @@
 """
 RqhBot SDK —— 配置模块
-提供配置管理与日志设置
+提供配置管理、OneBot 后端注册表与日志设置
 """
 
 from __future__ import annotations
 
+from .backends import BACKENDS, DEFAULT_BACKEND, BackendSpec, get_backend
 from .config import (
     Config,
     ConfigManager,
@@ -19,4 +20,8 @@ __all__: list[str] = [
     "config_manager",
     "setup_logging",
     "get_logger",
+    "BackendSpec",
+    "BACKENDS",
+    "DEFAULT_BACKEND",
+    "get_backend",
 ]

@@ -2,7 +2,7 @@
 
 ## 📖 简介
 
-RqhBot SDK 是一个基于 NapCat OneBot11 协议的 Python QQ 机器人开发框架，采用模块化设计，提供简洁易用的 API、强大的插件系统和事件驱动的架构。
+RqhBot SDK 是一个基于 OneBot 11 协议的 Python QQ 机器人开发框架，支持 NapCat / SnowLuma 等后端，采用模块化设计，提供简洁易用的 API、强大的插件系统和事件驱动的架构。
 
 ## 📁 目录结构
 
@@ -12,7 +12,7 @@ sdk/
 ├── bot_client.py            # BotClient 核心类，整合所有功能
 ├── core/                    # 核心模块
 │   ├── __init__.py          # 核心模块导出
-│   ├── client.py           # NapCatClient - WebSocket 客户端 / MessageSegment
+│   ├── client.py           # OneBotClient - WebSocket 客户端 / MessageSegment
 │   ├── emoji_map.py        # QQ 表情 ID → 名称映射
 │   ├── events.py           # 强类型事件与 Message 定义
 │   ├── event_bus.py        # 事件总线（EventBus）
@@ -23,6 +23,7 @@ sdk/
 │   └── plugin_manager.py   # HotReloadPluginManager 热重载管理器
 └── config/                  # 配置模块
     ├── __init__.py          # 配置模块导出
+    ├── backends.py          # OneBot 后端注册表（NapCat / SnowLuma）
     └── config.py           # 配置管理和日志设置
 ```
 
@@ -32,7 +33,7 @@ sdk/
 
 提供机器人核心功能：
 
-- **NapCatClient**: WebSocket 客户端，负责与 NapCat 建立连接、收发消息并封装常用 OneBot API 调用
+- **OneBotClient**: WebSocket 客户端（别名 `NapCatClient`），负责与选定的 OneBot 后端（NapCat / SnowLuma）建立连接、收发消息并封装常用 OneBot API 调用
 - **MessageSegment**: 消息段构建器，用于构造数组格式的图文混排消息
 - **Event classes**: 强类型事件，包括 GroupMessageEvent、PrivateMessageEvent 等（含 Message 对象）
 - **EventBus**: 事件总线，实现模块间的解耦通信
@@ -51,6 +52,7 @@ sdk/
 提供配置和日志功能：
 
 - **Config**: 配置管理类，支持 YAML 配置文件和环境变量
+- **get_backend**: OneBot 后端注册表查询（`BackendSpec` / `BACKENDS` / `DEFAULT_BACKEND`）
 - **setup_logging**: 日志设置函数，支持按日期分隔的日志文件
 
 ## 🚀 使用方法
@@ -60,7 +62,7 @@ sdk/
 ```python
 # 方式一：从子模块导入
 from sdk.bot_client import BotClient
-from sdk.core import NapCatClient, MessageSegment, GroupMessageEvent
+from sdk.core import OneBotClient, MessageSegment, GroupMessageEvent
 
 # 方式二：从主模块导入（推荐）
 from sdk import BotClient, GroupMessageEvent
