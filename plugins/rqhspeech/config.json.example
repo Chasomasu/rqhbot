@@ -1,8 +1,0 @@
-{
-  "name": "rqhspeech",
-  "version": "2.0.0",
-  "description": "发言统计插件 - 发言日榜、周榜、用户统计等功能",
-  "author": "rqh",
-  "enabled": true,
-  "priority": 100
-}

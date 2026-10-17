@@ -1,9 +1,0 @@
-{
-  "allowed_groups": [
-    "123456789"
-  ],
-  "admin_users": [
-    "123456789"
-  ],
-  "use_whitelist_mode": false
-}

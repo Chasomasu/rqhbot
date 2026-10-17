@@ -1,10 +1,10 @@
 {
     "name": "rqhspeech",
-    "version": "4.0.0",
-    "description": "发言统计插件 - 发言日榜、周榜、月榜、用户统计等功能",
+    "version": "6.0.0",
+    "description": "发言统计插件 - 发言日榜、周榜、月榜、用户统计、每日签到等功能",
     "author": "rqhbot",
     "enabled": true,
     "priority": 100,
     "dependencies": [],
-    "python_requires": ">=3.10"
+    "python_requires": ">=3.8"
 }
