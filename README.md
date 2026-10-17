@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
-![Version](https://img.shields.io/badge/Version-3.7.0-orange.svg)
+![Version](https://img.shields.io/badge/Version-3.8.0-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![OneBot](https://img.shields.io/badge/OneBot-11-00b894.svg)
 ![NapCat](https://img.shields.io/badge/NapCat-supported-6c5ce7.svg)
@@ -20,7 +20,7 @@
 
 ```
 run.py
- └── sdk  3.7.0 (协议 / 插件 / 配置)
+ └── sdk  3.8.0 (协议 / 插件 / 配置)
       └── plugins/  6 个插件
 ```
 
@@ -96,7 +96,7 @@ pip install .
 
 ```
 run.py
- └── sdk  3.7.0 (protocol / plugins / config)
+ └── sdk  3.8.0 (protocol / plugins / config)
       └── plugins/  6 plugins
 ```
 
@@ -147,6 +147,6 @@ pip install .
 
 <div align="center">
 
-**RqhBot v3.7.0**
+**RqhBot v3.8.0**
 
 </div>

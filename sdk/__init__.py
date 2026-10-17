@@ -36,7 +36,7 @@ from .pluginsystem import (
     private_server,
 )
 
-__version__: str = "3.7.0"
+__version__: str = "3.8.0"
 
 __all__: list[str] = [
     "OneBotClient",

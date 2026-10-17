@@ -1,6 +1,6 @@
 [project]
 name = "rqhbot"
-version = "3.7.0"
+version = "3.8.0"
 description = "基于 NapCat OneBot11 协议的 Python QQ 机器人开发框架"
 readme = "README.md"
 license = {text = "MIT"}

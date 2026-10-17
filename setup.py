@@ -13,7 +13,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="rqhbot",
-    version="3.7.0",
+    version="3.8.0",
     description="基于 NapCat OneBot11 协议的 Python QQ 机器人开发框架",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -179,7 +179,7 @@ class HelloPlugin(PluginBase):
 
 ## 📋 版本信息
 
-- **当前版本**: 3.7.0
+- **当前版本**: 3.8.0
 - **最后更新**: 2026-05-16
 - **Python 要求**: >= 3.10
 - **依赖库**: websockets, aiohttp, PyYAML, python-dotenv, requests, packaging
